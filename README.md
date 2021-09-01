@@ -1,7 +1,7 @@
 # Laravel-Ubki
 
 <p align="center">
-    <a href="https://github.styleci.io/repos/000000000"><img src="https://github.styleci.io/repos/000000000/shield?style=flat" alt="StyleCI Status"></a>
+    <a href="https://github.styleci.io/repos/402058106"><img src="https://github.styleci.io/repos/402058106/shield?style=flat" alt="StyleCI Status"></a>
     <a href="https://packagist.org/packages/arttiger/laravel-ubki"><img src="https://img.shields.io/packagist/dt/arttiger/laravel-ubki?style=flat" alt="Total Downloads"></a>
     <a href="https://packagist.org/packages/arttiger/laravel-ubki"><img src="https://img.shields.io/packagist/v/arttiger/laravel-ubki?style=flat" alt="Latest Stable Version"></a>
     <a href="https://packagist.org/packages/arttiger/laravel-ubki"><img src="https://img.shields.io/packagist/l/arttiger/laravel-ubki?style=flat" alt="License"></a>
