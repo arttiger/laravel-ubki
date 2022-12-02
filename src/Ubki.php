@@ -786,7 +786,7 @@ class Ubki
 
             // sold credit
             if ($status == 3) {
-                $req_request .= 'dlsale_date="'.$close_date.'" 
+                $req_request .= 'dlsale_date="'.$this->_attributes[config('ubki.model_data_upload.dlsale_date')].'" 
             dlkontragent="'.$this->_attributes[config('ubki.model_data_upload.dlkontragent')].'" 
             dlsale_name="'.$this->_attributes[config('ubki.model_data_upload.dlsale_name')].'" 
             dlsale_addr="'.$this->_attributes[config('ubki.model_data_upload.dlsale_addr')].'" 
