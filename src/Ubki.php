@@ -748,7 +748,7 @@ class Ubki
         $upload_date = $this->_attributes[config('ubki.model_data_upload.dldateclc')];
         $close_date = '';
         $status = $this->_attributes[config('ubki.model_data_upload.dlflstat')];
-        if ($status == 2 || $status == 3 || $status == 6 || $status == 7 || $status == 10) {
+        if ($status == 2 || $status == 6 || $status == 7 || $status == 10) {
             $date = $this->_attributes[config('ubki.model_data_upload.dldff')];
             $close_date = Carbon::parse($date)->format('Y-m-d');
             $dlmonth = Carbon::parse($date)->format('m');
