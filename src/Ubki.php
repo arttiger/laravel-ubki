@@ -4,9 +4,12 @@ namespace Arttiger\Ubki;
 
 use Arttiger\Ubki\Models\UbkiToken;
 use Carbon\Carbon;
+use DOMDocument;
+use DOMException;
 use GuzzleHttp\Client;
 use GuzzleHttp\Psr7\Request;
 use Illuminate\Database\Eloquent\Builder;
+use Illuminate\Support\Facades\Http;
 use SimpleXMLElement;
 
 class Ubki
@@ -89,8 +92,8 @@ class Ubki
      *                'lang'         // Language of search
      *                'test'         // Enables the Test Mode
      *                ]
-     *
      * @return mixed
+     * @throws DOMException
      */
     public function getReport($attributes, $params = [])
     {
@@ -263,21 +266,14 @@ class Ubki
     /**
      * Send a request to UBKI and get a response.
      *
-     * @return mixed
+     * @return array
      * @throws
      */
-    private function _queryXml()
+    private function _queryXml(): array
     {
         if ($this->_request_url && $this->_request_xml) {
-            $client = new Client();
-            $request = new Request(
-                'POST',
-                $this->_request_url,
-                ['Content-Type' => 'text/xml; charset=UTF8'],
-                $this->_request_xml
-            );
-            $response = $client->send($request);
-            $this->_response_xml = $response->getBody();
+            $response = Http::withBody($this->_request_xml, 'text/xml; charset=UTF8')->post($this->_request_url);
+            $this->_response_xml = $response->body();
             $result = $this->_parseXml();
 
             if (isset($result['errtype'])) {
@@ -285,11 +281,10 @@ class Ubki
 
                 return ['status' => 'error', 'errors' => $result, 'request_data' => $this->_request_data, 'response_data' => $res];
             } else {
-                return ['status' => 'success', 'response' => $response->getBody()];
+                return ['status' => 'success', 'response' => $this->_response_xml];
             }
         }
-
-        return false;
+        return [];
     }
 
     /**
@@ -354,13 +349,13 @@ class Ubki
     }
 
     /**
-     * Get xml for the request to UBKI.
+     * Get XML for the request to UBKI.
      *
      * @param $report_alias
-     *
      * @return string
+     * @throws DOMException
      */
-    private function _getXml($report_alias)
+    private function _getXml($report_alias): string
     {
         if ($report_alias == null) {
             $report_alias = config('ubki.report_default');
@@ -369,103 +364,109 @@ class Ubki
         switch ($report_alias) {
             case 'standard':
                 return $this->_prepare(config('ubki.reports.standard'));
-                break;
             case 'standard_pb':
                 return $this->_prepare(config('ubki.reports.standard_pb'));
-                break;
             case 'contacts':
                 return $this->_prepare(config('ubki.reports.contacts'));
-                break;
             case 'scoring':
                 return $this->_prepare(config('ubki.reports.scoring'));
-                break;
             case 'identification':
                 return $this->_prepare(config('ubki.reports.identification'));
-                break;
             case 'passport':
                 return $this->_prepare(config('ubki.reports.passport'));
-                break;
             case 'photo_verify':
                 return $this->_prepare(config('ubki.reports.photo_verify'));
-                break;
         }
     }
 
     /**
-     * Create xml for the request to UBKI.
+     * Create XML for the request to UBKI.
      *
-     * @param  $cod_report
-     *
-     * @return string
+     * @param string $code_report
+     * @return string|false The XML, or false if an error occurred.
+     * @throws DOMException
      */
-    private function _prepare($cod_report)
+    private function _prepare(string $code_report): string|false
     {
-        $req_request = '<request version="1.0" '
-            .'reqtype="'.$cod_report.'" '
-            .'reqreason="'.$this->_reason_key.'" '
-            .'reqdate="'.Carbon::now()->format('Y-m-d').'" '
-            .'reqidout="'.$this->_request_id.'" '
-            .'reqsource="1">'
-            .'<i reqlng="'.config('ubki.languages.'.$this->_lang_search).'">'
-            .'<ident 
-                    okpo="'.$this->_attributes[config('ubki.model_data.okpo')].'"
-                    lname="'.$this->_attributes[config('ubki.model_data.lname')].'"
-                    fname="'.$this->_attributes[config('ubki.model_data.fname')].'"
-                    mname="'.$this->_attributes[config('ubki.model_data.mname')].'"
-                    bdate="'.$this->_attributes[config('ubki.model_data.bdate')].'"
-                    orgname=""
-                 ></ident>';
+        $xml = new DomDocument('1.0', 'utf-8');
+        $doc = $xml->createElement('doc');
+        $ubki = $xml->createElement('ubki');
+        $ubki->setAttribute('sessid', $this->_session_key);
+        $reqEnvelope = $xml->createElement('req_envelope');
+        $reqEnvelope->setAttribute('descr', 'Конверт запиту');
+        $reqXml = $xml->createElement('req_xml');
+        $reqXml->setAttribute('descr', 'Об\'єкт запиту');
+        // Параметри запиту
+        $request = $xml->createElement('request');
+        $request->setAttribute('version', '1.0');
+        $request->setAttribute('reqtype', $code_report);
+        $request->setAttribute('reqreason', $this->_reason_key);
 
-        if ($cod_report != config('ubki.reports.passport') && $cod_report != config('ubki.reports.photo_verify')) {
-            $req_request .= '<spd inn="'.$this->_attributes[config('ubki.model_data.okpo')].'" />';
+        // Параметри, що описують критерії пошуку
+        $i = $xml->createElement('i');
+        $i->setAttribute('reqlng', config('ubki.languages.'.$this->_lang_search));
+        // Параметри ідентифікації суб'єкта
+        $ident = $xml->createElement('ident');
+        $ident->setAttribute('okpo', $this->_attributes[config('ubki.model_data.okpo')]);
+        $ident->setAttribute('lname', $this->_attributes[config('ubki.model_data.lname')]);
+        $ident->setAttribute('fname', $this->_attributes[config('ubki.model_data.fname')]);
+        $ident->setAttribute('mname', $this->_attributes[config('ubki.model_data.mname')]);
+        $ident->setAttribute('bdate', $this->_attributes[config('ubki.model_data.bdate')]);
+        $i->appendChild($ident);
 
-            $req_request .= '<docs><doc 
-                    dtype="'.$this->_attributes[config('ubki.model_data.dtype')].'"
-                    dser="'.$this->_attributes[config('ubki.model_data.dser')].'"
-                    dnom="'.$this->_attributes[config('ubki.model_data.dnom')].'"
-                /></docs>';
+        if (!in_array($code_report, [config('ubki.reports.passport'), config('ubki.reports.photo_verify')])) {
+            $spd = $xml->createElement('spd');
+            $spd->setAttribute('inn', $this->_attributes[config('ubki.model_data.okpo')]);
+            $i->appendChild($spd);
 
-            $req_request .= '<contacts><cont
-                    ctype = "'.$this->_attributes[config('ubki.model_data.ctype')].'"
-                    cval  = "'.$this->_attributes[config('ubki.model_data.cval')].'"
-                /></contacts >';
+            $contacts = $xml->createElement('contacts');
+            $cont = $xml->createElement('cont');
+            $cont->setAttribute('ctype', $this->_attributes[config('ubki.model_data.ctype')]);
+            $cont->setAttribute('cval', $this->_attributes[config('ubki.model_data.cval')]);
+            $contacts->appendChild($cont);
+            $i->appendChild($contacts);
+
+            $docs = $xml->createElement('docs');
+            $doc1 = $xml->createElement('doc');
+            $doc1->setAttribute('dtype', $this->_attributes[config('ubki.model_data.dtype')]);
+            $doc1->setAttribute('dser', $this->_attributes[config('ubki.model_data.dser')]);
+            $doc1->setAttribute('dnom', $this->_attributes[config('ubki.model_data.dnom')]);
+            $docs->appendChild($doc1);
+            $i->appendChild($docs);
         }
 
-        if ($cod_report == config('ubki.reports.standard') ||
-            $cod_report == config('ubki.reports.standard_pb') ||
-            $cod_report == config('ubki.reports.passport')) {
-            $req_request .= '<mvd
-                    pser   = "'.$this->_attributes[config('ubki.model_data.dser')].'"
-                    pnom   = "'.$this->_attributes[config('ubki.model_data.dnom')].'"
-                    plname = "'.$this->_attributes[config('ubki.model_data.lname')].'"
-                    pfname = "'.$this->_attributes[config('ubki.model_data.fname')].'"
-                    pmname = "'.$this->_attributes[config('ubki.model_data.mname')].'"
-                    pbdate = "'.$this->_attributes[config('ubki.model_data.bdate')].'"
-            ></mvd >';
+        if (in_array($code_report, [config('ubki.reports.standard'), config('ubki.reports.standard_pb'), config('ubki.reports.passport')])) {
+            $mvd = $xml->createElement('mvd');
+            $mvd->setAttribute('dtype', $this->_attributes[config('ubki.model_data.dtype')]);
+            $mvd->setAttribute('pser', $this->_attributes[config('ubki.model_data.dser')]);
+            $mvd->setAttribute('pnom', $this->_attributes[config('ubki.model_data.dnom')]);
+            $mvd->setAttribute('plname', $this->_attributes[config('ubki.model_data.lname')]);
+            $mvd->setAttribute('pfname', $this->_attributes[config('ubki.model_data.fname')]);
+            $mvd->setAttribute('pmname', $this->_attributes[config('ubki.model_data.mname')]);
+            $mvd->setAttribute('pbdate', $this->_attributes[config('ubki.model_data.bdate')]);
+            $i->appendChild($mvd);
         }
 
-        if ($cod_report == config('ubki.reports.photo_verify')) {
-            $req_request .= '<fotoverif freqtype="2" facelogic="3"  fotoext="jpg" inn="'.$this->_attributes[config('ubki.model_data.okpo')].'" phone="'.$this->_attributes[config('ubki.model_data.cval')].'" foto="'.$this->_attributes[config('ubki.model_data.foto')].'" />';
+        if ($code_report == config('ubki.reports.photo_verify')) {
+            $fotoverif = $xml->createElement('fotoverif');
+            $fotoverif->setAttribute('freqtype', '2');
+            $fotoverif->setAttribute('facelogic', '3');
+            $fotoverif->setAttribute('fotoext', 'jpg');
+            $fotoverif->setAttribute('inn', $this->_attributes[config('ubki.model_data.okpo')]);
+            $fotoverif->setAttribute('phone', $this->_attributes[config('ubki.model_data.cval')]);
+            $fotoverif->setAttribute('foto', $this->_attributes[config('ubki.model_data.foto')]);
+            $i->appendChild($fotoverif);
         }
 
-        $req_request .= '</i></request>';
+        $request->appendChild($i);
+        $reqXml->appendChild($request);
+        $reqEnvelope->appendChild($reqXml);
+        $ubki->appendChild($reqEnvelope);
+        $doc->appendChild($ubki);
+        $xml->appendChild($doc);
+        $xml->formatOutput = true;
 
-        $this->_request_data = $req_request;
-
-        if ($cod_report != config('ubki.reports.photo_verify')) {
-            $req_request = base64_encode($req_request);
-        }
-
-        return $req_xml = '<?xml version="1.0" encoding="utf-8"?>'
-            .'<doc>'
-            .'<ubki sessid="'.$this->_session_key.'">'
-            .'<req_envelope>'
-            .'<req_xml>'
-            .$req_request
-            .'</req_xml>'
-            .'</req_envelope>'
-            .'</ubki>'
-            .'</doc>';
+        return $xml->saveXML();
     }
 
     /**
@@ -826,7 +827,7 @@ class Ubki
 
         $this->_request_data = $req_request;
 
-        return $req_xml = base64_encode($req_request);
+        return $req_request;
     }
 
     /**
